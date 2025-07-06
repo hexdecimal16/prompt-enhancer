@@ -220,4 +220,104 @@ export interface ModelDecision {
   quality_score: number;
   speed_score: number;
   cost_efficiency: number;
+}
+
+// Web Scraping Types
+export interface WebSearchQuery {
+  query: string;
+  category: string;
+  priority: number;
+  search_engines: string[];
+}
+
+export interface SearchResult {
+  url: string;
+  title: string;
+  snippet: string;
+  search_engine: string;
+  ranking: number;
+  metadata?: {
+    published?: string;
+    age?: string;
+    language?: string;
+    family_friendly?: boolean;
+  };
+}
+
+export interface ScrapedContent {
+  url: string;
+  title: string;
+  content: string;
+  metadata: {
+    description?: string;
+    keywords?: string[];
+    author?: string;
+    publish_date?: string;
+  };
+  word_count: number;
+  relevance_score: number;
+}
+
+export interface EnhancedPromptWithContext {
+  original_prompt: string;
+  enhanced_prompt: string;
+  web_context: ScrapedContent[];
+  search_queries: WebSearchQuery[];
+  categories: TaskCategory[];
+  processing_metadata: {
+    search_time: number;
+    scraping_time: number;
+    total_time: number;
+    urls_processed: number;
+    success_rate: number;
+  };
+}
+
+export interface BrowserConfig {
+  headless: boolean;
+  proxy?: string;
+  user_agent?: string;
+  viewport: { width: number; height: number };
+  timeout: number;
+  stealth_mode: boolean;
+}
+
+export interface ScrapingSession {
+  browser_id: string;
+  search_engine: string;
+  requests_count: number;
+  last_request_time: number;
+  proxy_used: string | undefined;
+  user_agent: string;
+  session_start: number;
+}
+
+export interface AntiDetectionConfig {
+  random_delays: { min: number; max: number };
+  mouse_movements: boolean;
+  scroll_simulation: boolean;
+  user_agent_rotation: boolean;
+  proxy_rotation: boolean;
+  session_cycling: { max_requests: number; cooldown_ms: number };
+}
+
+export interface WebScrapingConfig {
+  enabled: boolean;
+  search_engines: {
+    google: { enabled: boolean };
+    bing: { enabled: boolean };
+    duckduckgo: { enabled: boolean };
+  };
+  scraping: {
+    max_urls_per_query: number;
+    timeout_ms: number;
+    user_agent: string;
+    respect_robots_txt: boolean;
+    rate_limit_delay_ms: number;
+  };
+  content_processing: {
+    min_word_count: number;
+    max_content_length: number;
+    relevance_threshold: number;
+  };
 } 

@@ -10,15 +10,16 @@ import {
 import { ProviderInterface } from './types';
 import { ConfigurationManager } from './config/configuration-manager';
 import {
-  TaskCategorizer,
   ModelDecisionEngine,
   PromptEnhancer,
   CacheService,
 } from './services';
+import { EnhancedTaskCategorizer } from './services/enhanced-task-categorizer';
+import { EnhancedPromptService } from './services/enhanced-prompt-service';
 import { TagMap } from './services/tag-llm-categorizer';
 import { createProvider } from './providers';
 import { Logger } from './utils/logger';
-import { ModelConfig } from './types';
+import { ModelConfig, GenerationOptions } from './types';
 
 interface ProcessPromptRequest {
   prompt: string;
@@ -27,6 +28,7 @@ interface ProcessPromptRequest {
     preferred_provider?: string;
     cost_limit?: number;
     target_category?: string;
+    enable_web_search?: boolean;
   };
 }
 
@@ -52,9 +54,9 @@ export class PromptEnhancerMCPServer {
   private logger: Logger;
   private configManager: ConfigurationManager;
   private providers: Map<string, ProviderInterface> = new Map();
-  private taskCategorizer: TaskCategorizer;
+  private taskCategorizer: EnhancedTaskCategorizer;
   private modelDecisionEngine: ModelDecisionEngine;
-  private promptEnhancer: PromptEnhancer | undefined;
+  private promptService: EnhancedPromptService | undefined;
   private cacheService: CacheService;
 
   private constructor(configManager: ConfigurationManager) {
@@ -95,11 +97,14 @@ export class PromptEnhancerMCPServer {
       linux: ['linux_terminal'],
     };
 
-    this.taskCategorizer = new TaskCategorizer(
+    this.taskCategorizer = new EnhancedTaskCategorizer(
       this.configManager.getCategories(),
       classifierProvider && classifierModel
         ? { provider: classifierProvider, model: classifierModel, tagMap }
         : undefined,
+      enhancementProvider && enhancementModel
+        ? { provider: enhancementProvider, model: enhancementModel }
+        : undefined
     );
     this.modelDecisionEngine = new ModelDecisionEngine(
       this.configManager.getAvailableModels('all'),
@@ -107,15 +112,69 @@ export class PromptEnhancerMCPServer {
       this.configManager.getConfiguration().user_preferences,
     );
     
-    // Only create PromptEnhancer if we have valid provider and model
+    // Always create EnhancedPromptService, even if LLM providers are missing
+    // This allows web scraping functionality to work with fallback enhancement
+    let basePromptEnhancer: PromptEnhancer;
+    
     if (enhancementProvider && enhancementModel) {
-      this.promptEnhancer = new PromptEnhancer(
+      basePromptEnhancer = new PromptEnhancer(
         enhancementProvider,
         enhancementModel,
       );
+      this.logger.info('Enhanced prompt service initialized with LLM provider');
     } else {
-      this.promptEnhancer = undefined;
-      this.logger.warn('PromptEnhancer not available due to missing provider or model');
+      // Create a dummy PromptEnhancer that returns the original prompt
+      // This allows web scraping to work even without LLM enhancement
+      const dummyProvider: ProviderInterface = {
+        name: 'fallback',
+        isAvailable: () => true,
+        generate: async (prompt: string, _options: GenerationOptions) => ({
+          content: prompt,
+          tokens_used: { input: 0, output: 0, total: 0 },
+          cost: 0,
+          model: 'fallback-model',
+          provider: 'fallback',
+          processing_time: 0,
+          cached: false
+        }),
+        estimateTokens: (text: string) => Math.ceil(text.length / 4),
+        estimateCost: (_inputTokens: number, _outputTokens: number) => 0,
+        getAvailableModels: () => ['fallback-model']
+      };
+      
+      const dummyModel: ModelConfig = {
+        name: 'fallback-model',
+        provider: 'fallback',
+        enabled: true,
+        cost_per_token: 0,
+        max_tokens: 4000,
+        priority: 1,
+        context_window: 4000
+      };
+      
+      basePromptEnhancer = new PromptEnhancer(dummyProvider, dummyModel);
+      this.logger.warn('Enhanced prompt service initialized with fallback provider (web scraping still available)');
+    }
+    
+    try {
+      this.promptService = new EnhancedPromptService(
+        this.taskCategorizer,
+        basePromptEnhancer,
+        this.configManager // Pass config manager for Brave API access
+      );
+      
+      this.logger.info('Enhanced prompt service created successfully', {
+        serviceType: this.promptService.constructor.name,
+        hasTaskCategorizer: !!this.taskCategorizer,
+        hasBaseEnhancer: !!basePromptEnhancer
+      });
+    } catch (serviceCreationError) {
+      this.logger.error('Failed to create EnhancedPromptService', { 
+        error: serviceCreationError,
+        hasTaskCategorizer: !!this.taskCategorizer,
+        hasBaseEnhancer: !!basePromptEnhancer
+      });
+      this.promptService = undefined;
     }
     
     const cacheSettings = this.configManager.getCacheSettings();
@@ -276,7 +335,9 @@ export class PromptEnhancerMCPServer {
       // --------------------------------------------------
       let categories = this.cacheService.getCachedCategories(prompt);
       if (!categories) {
-        categories = await this.taskCategorizer.categorizeTask(prompt);
+        // Use enhanced categorizer that also generates search queries
+        const categorization = await this.taskCategorizer.categorizeTaskWithWebSearch(prompt);
+        categories = categorization.categories;
         this.cacheService.cacheCategories(prompt, categories);
       }
       // TypeScript safeguard: ensure categories is an array
@@ -286,10 +347,15 @@ export class PromptEnhancerMCPServer {
       // 3. Enhance the prompt
       // --------------------------------------------------
       let result;
-      if (this.promptEnhancer) {
-        result = await this.promptEnhancer.enhancePrompt(
+      this.logger.debug('Checking prompt service availability', {
+        hasPromptService: !!this.promptService,
+        promptServiceType: this.promptService?.constructor.name
+      });
+      
+      if (this.promptService) {
+        this.logger.debug('Using enhanced prompt service with web context');
+        const enhancedResult = await this.promptService.enhancePromptWithWebContext(
           prompt,
-          categories,
           {
             max_iterations:
               enhancement_level === 'comprehensive'
@@ -297,12 +363,27 @@ export class PromptEnhancerMCPServer {
                 : enhancement_level === 'detailed'
                 ? 2
                 : 1,
-            cost_limit: cost_limit,
+            cost_limit: cost_limit || 0.01,
+            enable_web_search: options.enable_web_search ?? true,
           },
         );
+
+        // Transform EnhancedPromptWithContext to EnhancementResult for compatibility
+        result = {
+          original_prompt: enhancedResult.original_prompt,
+          enhanced_prompt: enhancedResult.enhanced_prompt,
+          categories: enhancedResult.categories,
+          model_used: 'enhanced-with-web-context',
+          provider: 'multi-source',
+          estimated_tokens: Math.ceil(enhancedResult.enhanced_prompt.length / 4),
+          estimated_cost: 0, // Cost tracking to be implemented
+          enhancement_strategies: ['web_context_enhancement'],
+          quality_score: enhancedResult.web_context.length > 0 ? 0.9 : 0.7,
+          processing_time: enhancedResult.processing_metadata.total_time
+        };
       } else {
         // Fallback when no enhancement provider is available
-        this.logger.warn('Enhancement provider not available, returning original prompt');
+        this.logger.warn('Enhancement provider not available, using fallback, returning original prompt');
         result = {
           original_prompt: prompt,
           enhanced_prompt: prompt,

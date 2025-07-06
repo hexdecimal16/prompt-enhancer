@@ -1,24 +1,24 @@
 # Prompt Enhancer MCP Server
 
-This repository contains a Model-Context-Protocol (MCP) compliant server that provides intelligent prompt enhancement, model recommendations, and cost optimization for interacting with Large Language Models (LLMs).
-
-It analyzes user prompts to categorize the underlying task and then enriches the prompt with context, examples, and constraints to elicit higher-quality responses from models. It can also recommend the most suitable model for a task based on complexity, cost, and user preferences.
+A sophisticated Model Context Protocol (MCP) server that provides intelligent prompt enhancement with real-time web search and content integration. The server analyzes user prompts, categorizes tasks, searches the web for relevant context, and generates enhanced prompts optimized for better LLM responses.
 
 ## ✨ Features
 
-- **Intelligent Prompt Enhancement**: Automatically refines vague prompts into detailed, effective ones.
-- **Task Categorization**: Uses an LLM-based tagging system to identify prompt types and contexts.
-- **Model Recommendations**: Suggests the best model for each task based on complexity and cost.
-- **Cost Optimization**: Tracks and optimizes API usage costs across different providers.
-- **Caching**: Intelligent caching to reduce redundant API calls and costs.
-- **Multiple Providers**: Support for Google AI, OpenAI, Anthropic, and custom providers.
+- **🔍 Web-Enhanced Prompts**: Automatically searches the web and integrates relevant, up-to-date content into prompts
+- **🧠 Intelligent Task Categorization**: Uses LLM-based analysis to identify prompt types and contexts
+- **📊 Model Recommendations**: Suggests the best model for each task based on complexity and requirements
+- **⚡ Fast Search Integration**: Powered by Brave Search API with smart fallback mechanisms
+- **🎯 Relevance-Based Query Generation**: Creates optimized search queries ordered by relevance to the original prompt
+- **📈 Smart Caching**: Intelligent caching to reduce redundant API calls and improve performance
+- **🔗 Multiple Provider Support**: Works with Google AI, OpenAI, Anthropic, and other providers
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
-- Node.js 16+ and npm 8+
-- API keys for at least one LLM provider (Google AI recommended)
+- **Node.js 18+** and npm
+- **Brave Search API Key** (required for web search functionality)
+- **LLM Provider API Key** (Google AI recommended for categorization)
 
 ### Installation
 
@@ -26,19 +26,13 @@ It analyzes user prompts to categorize the underlying task and then enriches the
 
 1. **Clone and build the project:**
    ```bash
-   git clone https://github.com/hexdecimal16/prompt-enhancer.git
+   git clone https://github.com/your-username/prompt-enhancer.git
    cd prompt-enhancer
    npm install
    npm run build
    ```
 
-2. **Set up environment variables:**
-   ```bash
-   cp .env.example .env
-   # Edit .env and add your API keys
-   ```
-
-3. **Add to your Claude Desktop configuration:**
+2. **Add to your Claude Desktop configuration:**
 
    **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
    **Windows:** `%APPDATA%/Claude/claude_desktop_config.json`
@@ -52,12 +46,15 @@ It analyzes user prompts to categorize the underlying task and then enriches the
            "/absolute/path/to/prompt-enhancer/dist/index.js"
          ],
          "env": {
-           "GOOGLE_API_KEY": "your_google_api_key_here"
+           "GOOGLE_API_KEY": "your_google_api_key_here",
+           "BRAVE_API_KEY": "your_brave_search_api_key_here"
          }
        }
      }
    }
    ```
+
+3. **Restart Claude Desktop** to load the MCP server.
 
 #### Option 2: Global Installation (Coming Soon)
 
@@ -65,75 +62,83 @@ It analyzes user prompts to categorize the underlying task and then enriches the
 npm install -g prompt-enhancer
 ```
 
-Then configure in Claude Desktop:
-```json
-{
-  "mcpServers": {
-    "prompt-enhancer": {
-      "command": "npx",
-      "args": ["prompt-enhancer"],
-      "env": {
-        "GOOGLE_API_KEY": "your_google_api_key_here"
-      }
-    }
-  }
-}
-```
+### API Keys Setup
 
-### Environment Configuration
+#### Required: Brave Search API Key
+1. Sign up at [Brave Search API](https://api.search.brave.com/)
+2. Get your API key from the dashboard
+3. Add it to your MCP configuration as `BRAVE_API_KEY`
 
-The server requires API keys for LLM providers. Create a `.env` file or set environment variables:
+#### Required: LLM Provider API Key
+Choose one of the following providers:
 
-```bash
-# Required: At least one provider API key
-GOOGLE_API_KEY=your_google_api_key_here
+**Google AI (Recommended):**
+1. Get API key from [Google AI Studio](https://aistudio.google.com/app/apikey)
+2. Add as `GOOGLE_API_KEY`
 
-# Optional: Additional providers
-OPENAI_API_KEY=your_openai_api_key_here
-ANTHROPIC_API_KEY=your_anthropic_api_key_here
+**OpenAI:**
+1. Get API key from [OpenAI Platform](https://platform.openai.com/api-keys)
+2. Add as `OPENAI_API_KEY`
 
-# Optional: Server configuration
-LOG_LEVEL=info
-NODE_ENV=production
-```
-
-**⚠️ Security Note:** Never commit API keys to version control. Always use environment variables or secure secret management.
+**Anthropic:**
+1. Get API key from [Anthropic Console](https://console.anthropic.com/)
+2. Add as `ANTHROPIC_API_KEY`
 
 ## 🛠️ Available Tools
 
-The MCP server provides these tools for Claude Desktop:
-
 ### `process_prompt`
-Enhances and processes user prompts with intelligent categorization and optimization.
+Enhances prompts with intelligent web search and categorization.
 
 **Parameters:**
 - `prompt` (required): The user prompt to enhance
 - `options` (optional): Enhancement settings
-  - `enhancement_level`: 'basic' | 'detailed' | 'comprehensive'
-  - `preferred_provider`: Provider preference
-  - `cost_limit`: Maximum cost per request
-  - `target_category`: Force specific category
+  - `enhancement_level`: `'basic'` | `'detailed'` | `'comprehensive'` (default: `'detailed'`)
+  - `preferred_provider`: Provider preference for LLM calls
+  - `cost_limit`: Maximum cost per request (default: `0.01`)
+  - `target_category`: Force specific task category
+  - `enable_web_search`: Enable/disable web search (default: `true`)
 
 **Example:**
 ```json
 {
-  "prompt": "Help me write a function",
+  "prompt": "I want to create a FastAPI server with WebSocket support",
   "options": {
-    "enhancement_level": "detailed",
+    "enhancement_level": "comprehensive",
+    "enable_web_search": true,
     "cost_limit": 0.05
   }
 }
 ```
 
+**Response:**
+```json
+{
+  "success": true,
+  "result": {
+    "original_prompt": "I want to create a FastAPI server with WebSocket support",
+    "enhanced_prompt": "Create a production-ready FastAPI server with WebSocket support...",
+    "categories": [{"name": "Code Generation & Debugging", "confidence": 0.95}],
+    "web_context": [...],
+    "processing_metadata": {
+      "search_time": 4400,
+      "scraping_time": 39100,
+      "total_time": 47600,
+      "urls_processed": 3,
+      "success_rate": 0.67
+    }
+  }
+}
+```
+
 ### `get_recommendations`
-Gets model recommendations for a specific prompt.
+Gets model recommendations optimized for the specific prompt type.
 
 **Parameters:**
 - `prompt` (required): The prompt to analyze
 - `options` (optional): Recommendation settings
   - `cost_limit`: Maximum cost constraint
   - `min_quality`: Minimum quality threshold
-  - `limit`: Number of recommendations
+  - `limit`: Number of recommendations (default: 3)
 
 ### `analyze_complexity`
 Analyzes prompt complexity and provides detailed metrics.
@@ -156,15 +161,11 @@ Clears the server cache to free memory or force fresh responses.
 
 ```bash
 # Clone the repository
-git clone https://github.com/hexdecimal16/prompt-enhancer.git
+git clone https://github.com/your-username/prompt-enhancer.git
 cd prompt-enhancer
 
 # Install dependencies
 npm install
-
-# Set up environment
-cp .env.example .env
-# Edit .env with your API keys
 
 # Development mode with hot reload
 npm run dev
@@ -177,118 +178,83 @@ npm test
 
 # Lint and format
 npm run lint
-npm run lint:fix
 ```
 
 ### Project Structure
 
 ```
 src/
-├── config/          # Configuration management
-├── providers/       # LLM provider implementations  
-├── services/        # Core business logic
-├── types/           # TypeScript type definitions
-├── utils/           # Utility functions
-├── mcp-server.ts    # Main MCP server implementation
-└── index.ts         # Entry point
+├── config/                 # Configuration management
+├── providers/              # LLM provider implementations  
+├── services/               # Core business logic
+│   ├── web-search/         # Web search engines (Brave API)
+│   └── web-scraping/       # Content scraping utilities
+├── types/                  # TypeScript type definitions
+├── utils/                  # Utility functions
+├── mcp-server.ts          # Main MCP server implementation
+└── index.ts               # Entry point
 
-test/                # Test files
+test/                      # Test files
 ```
 
-### Testing
+### Environment Variables
 
-The project includes comprehensive tests:
-
-```bash
-# Run all tests
-npm test
-
-# Run with coverage
-npm run test:coverage
-
-# Integration tests
-npm run test:integration
-```
-
-**Note:** Tests use mock API keys for security. Never commit real API keys to test files.
-
-## 📖 Configuration
-
-### Provider Configuration
-
-The server automatically configures providers based on available API keys:
-
-- **Google AI**: Requires `GOOGLE_API_KEY`
-- **OpenAI**: Requires `OPENAI_API_KEY`  
-- **Anthropic**: Requires `ANTHROPIC_API_KEY`
-
-### Advanced Configuration
-
-You can customize behavior through environment variables:
+For development, create a `.env` file:
 
 ```bash
-# Cost and performance settings
-DEFAULT_COST_LIMIT=0.10
-DEFAULT_ENHANCEMENT_LEVEL=detailed
-MAX_CONCURRENT_REQUESTS=10
+# Required: LLM Provider (choose one)
+GOOGLE_API_KEY=your_google_api_key_here
+# OPENAI_API_KEY=your_openai_api_key_here
+# ANTHROPIC_API_KEY=your_anthropic_api_key_here
 
-# Cache configuration
-CACHE_TTL=3600
-CACHE_MAX_SIZE=1000
+# Required: Web Search
+BRAVE_API_KEY=your_brave_search_api_key_here
 
-# Logging
+# Optional: Configuration
 LOG_LEVEL=info
+NODE_ENV=development
 ```
 
-## 🔒 Security
+## 🌐 Web Search & Content Integration
 
-- **API Keys**: Always use environment variables, never hardcode keys
-- **Transport**: Uses secure stdio transport for Claude Desktop
-- **Validation**: All inputs are validated and sanitized
-- **Logging**: Sensitive data is never logged
+The server uses **Brave Search API** as the primary source for web search with intelligent content scraping:
 
-See [SECURITY.md](SECURITY.md) for detailed security guidelines.
+### How It Works
+
+1. **Task Analysis**: Analyzes your prompt to understand the task type and generate relevant search queries
+2. **Smart Search**: Uses Brave Search API to find the most relevant and recent content
+3. **Content Extraction**: Scrapes content from top URLs using stealth techniques to avoid blocking
+4. **Relevance Scoring**: Filters and ranks content based on relevance to your original prompt
+5. **Context Integration**: Seamlessly integrates web content into an enhanced prompt
+
+### Search Features
+
+- **Rate Limiting**: Automatic rate limit handling with intelligent retry logic
+- **Relevance-Based Ranking**: Search queries ordered by relevance to original prompt
+- **Content Quality Filtering**: Filters out low-quality or irrelevant content
+- **Cross-Platform Compatibility**: Works on all major operating systems
+
+## 📊 Performance & Metrics
+
+Example performance metrics from real usage:
+
+```
+Search Phase:    4.4s for 2 queries (10 results)
+Content Scraping: 39.1s for 3 URLs (67% success rate)
+LLM Enhancement:  2.5s processing time
+Total Processing: 47.6s end-to-end
+```
+
+## 🔒 Security & Privacy
+
+- **No Data Storage**: No user prompts or responses are stored persistently
+- **API Key Security**: All API keys are handled securely through environment variables
+- **Rate Limiting**: Built-in rate limiting prevents API abuse
+- **Stealth Scraping**: Uses advanced techniques to avoid detection and blocking
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-### Quick Contributing Steps
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/your-feature`
-3. Make your changes and add tests
-4. Run tests: `npm test`
-5. Submit a pull request
-
-## 📋 Requirements
-
-- **Node.js**: 16.0.0 or higher
-- **npm**: 8.0.0 or higher
-- **API Keys**: At least one LLM provider API key
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-**"Provider not found" error:**
-- Ensure you have set the required API key environment variable
-- Check that the API key is valid and has proper permissions
-
-**"Module not found" error:**
-- Run `npm run build` to compile TypeScript
-- Ensure all dependencies are installed with `npm install`
-
-**Performance issues:**
-- Enable caching with `CACHE_TTL=3600`
-- Adjust `MAX_CONCURRENT_REQUESTS` based on your system
-
-### Debug Mode
-
-Enable detailed logging:
-```bash
-LOG_LEVEL=debug npm start
-```
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## 📄 License
 
@@ -296,6 +262,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- Built with the [Model Context Protocol SDK](https://github.com/modelcontextprotocol/typescript-sdk)
-- Inspired by the MCP community and best practices
-- Thanks to all contributors and the open source community 
+- **Brave Search API** for providing fast and reliable search results
+- **MCP (Model Context Protocol)** for enabling seamless AI integration
+- **Claude Desktop** for excellent MCP server support 

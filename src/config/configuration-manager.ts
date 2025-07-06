@@ -486,6 +486,17 @@ export class ConfigurationManager {
     return this.config.logging.level;
   }
 
+  public getBraveApiKey(): string | undefined {
+    // Check environment variable first
+    const envKey = process.env['BRAVE_API_KEY'];
+    if (envKey) {
+      return envKey;
+    }
+
+    // Check MCP config
+    return this.mcpConfig?.brave_api_key;
+  }
+
   private addStaticGoogleProvider(providers: ProviderConfig[], allModels: ModelConfig[], apiKey: string): void {
     const googleModels: ModelConfig[] = [
       {

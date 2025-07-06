@@ -1,297 +1,351 @@
-# Prompt Enhancer MCP Server Setup Guide
+# Prompt Enhancer Setup Guide
 
-## Quick Start
+This guide will help you set up the Prompt Enhancer MCP server with web search integration and intelligent prompt enhancement.
 
-1. **Install Dependencies**
-   ```bash
-   npm install
-   ```
+## 📋 Prerequisites
 
-2. **Set Up Environment Variables**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your API keys
-   ```
+Before starting, ensure you have:
 
-3. **Build the Project**
-   ```bash
-   chmod +x build.sh
-   ./build.sh
-   ```
+- **Node.js 18+** and npm installed
+- **API Keys** for required services:
+  - Brave Search API key (required for web search)
+  - At least one LLM provider API key (Google AI, OpenAI, or Anthropic)
 
-4. **Start the Server**
-   ```bash
-   npm start
-   ```
+## 🚀 Installation Methods
 
-## Architecture Overview
+### Method 1: Claude Desktop Integration (Recommended)
 
-The Prompt Enhancer MCP Server provides intelligent prompt enhancement with cost optimization through:
+This is the most common way to use the prompt enhancer with Claude Desktop.
 
-### Core Components
+#### Step 1: Download and Build
 
-1. **Task Categorizer** (`src/services/task-categorizer.ts`)
-   - Analyzes prompts using lightweight pattern matching
-   - Categorizes into 9 predefined categories
-   - Calculates complexity scores
+```bash
+# Clone the repository
+git clone https://github.com/your-username/prompt-enhancer.git
+cd prompt-enhancer
 
-2. **Model Decision Engine** (`src/services/model-decision-engine.ts`)
-   - Selects optimal models based on task requirements
-   - Balances cost, quality, and speed
-   - Supports user preferences
+# Install dependencies
+npm install
 
-3. **Prompt Enhancer** (`src/services/prompt-enhancer.ts`)
-   - Improves prompts using cost-effective models
-   - Applies multiple enhancement strategies
-   - Tracks quality improvements
+# Build the project
+npm run build
+```
 
-4. **Cache Service** (`src/services/cache-service.ts`)
-   - Intelligent caching for responses and analyses
-   - Reduces API costs through cache hits
-   - Configurable TTL and size limits
+#### Step 2: Configure Claude Desktop
 
-5. **Provider Management** (`src/providers/`)
-   - Multi-provider support (OpenAI, Anthropic, Google, Groq)
-   - Automatic failover and health checks
-   - Cost estimation and tracking
+Add the MCP server to your Claude Desktop configuration file:
 
-### Task Categories
+**macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+**Windows:** `%APPDATA%/Claude/claude_desktop_config.json`
 
-1. **Code Generation & Debugging** - Programming and debugging tasks
-2. **Creative Writing & Content Creation** - Stories, articles, creative content
-3. **Data Analysis & Visualization** - Data processing and analysis
-4. **Technical Documentation** - API docs and technical writing
-5. **Problem Solving & Mathematics** - Logical reasoning and math problems
-6. **Research & Information Synthesis** - Research and information gathering
-7. **Conversational & General Q&A** - General conversation and questions
-8. **Educational & Tutoring** - Teaching and educational content
-9. **Business & Professional Writing** - Business communications
-
-## MCP Tools
-
-### 1. process_prompt
-Main tool for prompt processing with enhancement and optimal model selection.
-
-**Request:**
 ```json
 {
-  "tool": "process_prompt",
-  "arguments": {
-    "prompt": "Write a Python function to calculate fibonacci numbers",
-    "enhance": true,
-    "cache": true
+  "mcpServers": {
+    "prompt-enhancer": {
+      "command": "node",
+      "args": [
+        "/absolute/path/to/prompt-enhancer/dist/index.js"
+      ],
+      "env": {
+        "GOOGLE_API_KEY": "your_google_api_key_here",
+        "BRAVE_API_KEY": "your_brave_search_api_key_here"
+      }
+    }
   }
 }
 ```
 
-**Response:**
-```json
-{
-  "response": {
-    "content": "Enhanced response...",
-    "tokens_used": {"input": 50, "output": 200, "total": 250},
-    "cost": 0.001,
-    "model": "gpt-4o-mini",
-    "provider": "openai"
-  },
-  "model_decision": {
-    "selected_model": {...},
-    "reasoning": "Selected gpt-4o-mini for cost efficiency...",
-    "estimated_cost": 0.001
-  },
-  "enhancement_result": {
-    "original_prompt": "...",
-    "enhanced_prompt": "...",
-    "enhancement_strategies": ["clarity", "specificity"]
-  },
-  "categories": [...],
-  "complexity_score": 0.3
-}
+#### Step 3: Restart Claude Desktop
+
+Close and reopen Claude Desktop to load the new MCP server.
+
+### Method 2: Development Mode
+
+For development and testing:
+
+```bash
+# Clone and install
+git clone https://github.com/your-username/prompt-enhancer.git
+cd prompt-enhancer
+npm install
+
+# Create environment file
+cat > .env << EOF
+GOOGLE_API_KEY=your_google_api_key_here
+BRAVE_API_KEY=your_brave_search_api_key_here
+LOG_LEVEL=debug
+NODE_ENV=development
+EOF
+
+# Run in development mode
+npm run dev
 ```
 
-### 2. get_recommendations
-Get model recommendations for a prompt without processing.
+## 🔑 API Keys Setup
 
-**Request:**
-```json
-{
-  "tool": "get_recommendations",
-  "arguments": {
-    "prompt": "Explain quantum computing",
-    "limit": 3
-  }
-}
-```
+### Brave Search API (Required)
 
-### 3. analyze_complexity
-Analyze prompt complexity and characteristics.
+The Brave Search API provides fast, reliable web search results.
 
-**Request:**
-```json
-{
-  "tool": "analyze_complexity",
-  "arguments": {
-    "prompt": "Create a machine learning model for image classification"
-  }
-}
-```
+1. **Sign Up**: Visit [Brave Search API](https://api.search.brave.com/)
+2. **Get API Key**: Create an account and get your API key
+3. **Add to Configuration**: Add as `BRAVE_API_KEY` in your MCP config
 
-### 4. get_stats
-Get server performance statistics.
+**Pricing**: Free tier includes 2,000 queries/month. Paid plans available for higher usage.
 
-**Request:**
-```json
-{
-  "tool": "get_stats",
-  "arguments": {
-    "detailed": true
-  }
-}
-```
+### LLM Provider API Keys (Required)
 
-### 5. clear_cache
-Clear the server cache.
+Choose one of the following providers:
 
-**Request:**
-```json
-{
-  "tool": "clear_cache",
-  "arguments": {}
-}
-```
+#### Google AI (Recommended for most users)
 
-## Configuration
+- **Best for**: General use, cost-effective, fast response times
+- **Setup**: Get your key from [Google AI Studio](https://aistudio.google.com/app/apikey)
+- **Configuration**: Add as `GOOGLE_API_KEY`
+
+#### OpenAI 
+
+- **Best for**: High-quality outputs, advanced reasoning
+- **Setup**: Get your key from [OpenAI Platform](https://platform.openai.com/api-keys)
+- **Configuration**: Add as `OPENAI_API_KEY`
+
+#### Anthropic
+
+- **Best for**: Safety-focused applications, detailed analysis
+- **Setup**: Get your key from [Anthropic Console](https://console.anthropic.com/)
+- **Configuration**: Add as `ANTHROPIC_API_KEY`
+
+## 🔧 Configuration Options
 
 ### Environment Variables
 
+All configuration is done through environment variables:
+
 ```bash
-# Required: At least one API key
-OPENAI_API_KEY=sk-your-openai-key
-ANTHROPIC_API_KEY=sk-ant-your-anthropic-key
-GOOGLE_API_KEY=your-google-key
-GROQ_API_KEY=gsk_your-groq-key
+# Required API Keys
+GOOGLE_API_KEY=your_google_api_key_here
+BRAVE_API_KEY=your_brave_search_api_key_here
 
-# Optional configuration
-LOG_LEVEL=info
-CACHE_TTL=3600
-MAX_COST_PER_REQUEST=0.05
-PRIORITIZE_SPEED=false
-ENABLE_CACHING=true
-QUALITY_OVER_COST=false
+# Optional: Additional LLM Providers
+OPENAI_API_KEY=your_openai_api_key_here
+ANTHROPIC_API_KEY=your_anthropic_api_key_here
+
+# Optional: Logging and Performance
+LOG_LEVEL=info                    # error, warn, info, debug, verbose
+NODE_ENV=production               # production, development
 ```
 
-### Model Configuration
+### MCP Configuration
 
-The server automatically configures models based on available API keys:
+When using with Claude Desktop, you can also set these in the MCP server configuration:
 
-- **OpenAI**: GPT-4o, GPT-4o-mini
-- **Anthropic**: Claude-3.5-Sonnet, Claude-3-Haiku
-- **Google**: Gemini-1.5-Pro, Gemini-1.5-Flash
-- **Groq**: Llama models (ultra-fast inference)
-
-## Cost Optimization Features
-
-1. **Smart Model Selection**
-   - Routes simple tasks to cheaper models
-   - Uses expensive models only when necessary
-
-2. **Prompt Enhancement**
-   - Improves prompt quality to reduce iterations
-   - Uses cheap models for enhancement
-
-3. **Intelligent Caching**
-   - Caches responses to avoid redundant API calls
-   - Configurable cache settings
-
-4. **Provider Optimization**
-   - Selects most cost-effective provider per task
-   - Automatic failover between providers
-
-## Usage Examples
-
-### Basic Prompt Processing
-```bash
-# Start the server
-npm start
-
-# In another terminal, use with MCP client
-echo '{"tool": "process_prompt", "arguments": {"prompt": "Hello world"}}' | your-mcp-client
+```json
+{
+  "mcpServers": {
+    "prompt-enhancer": {
+      "command": "node",
+      "args": ["/path/to/prompt-enhancer/dist/index.js"],
+      "env": {
+        "GOOGLE_API_KEY": "your_key_here",
+        "BRAVE_API_KEY": "your_key_here",
+        "LOG_LEVEL": "info"
+      }
+    }
+  }
+}
 ```
 
-### Getting Model Recommendations
-```bash
-echo '{"tool": "get_recommendations", "arguments": {"prompt": "Complex data analysis task", "limit": 3}}' | your-mcp-client
+## 🧪 Testing Your Setup
+
+### Basic Functionality Test
+
+Once set up, test the server with Claude Desktop:
+
+```
+Use the process_prompt tool to enhance this prompt: "Help me create a web server"
 ```
 
-### Checking Server Stats
-```bash
-echo '{"tool": "get_stats", "arguments": {"detailed": true}}' | your-mcp-client
+Expected behavior:
+- Server analyzes the prompt
+- Searches the web for relevant tutorials and documentation
+- Returns an enhanced prompt with specific requirements and context
+
+### Advanced Test
+
+Try a more complex prompt:
+
+```json
+{
+  "prompt": "I need to build a real-time chat application",
+  "options": {
+    "enhancement_level": "comprehensive",
+    "enable_web_search": true
+  }
+}
 ```
 
-## Development
+Expected output should include:
+- Enhanced prompt with specific technologies and requirements
+- Web context from recent tutorials and documentation
+- Performance metrics showing search and scraping times
 
-### File Structure
-```
-src/
-├── config/              # Configuration management
-├── providers/           # LLM provider implementations
-├── services/           # Core business logic
-├── types/              # TypeScript type definitions
-├── utils/              # Utility functions
-├── mcp-server.ts       # Main MCP server
-└── index.ts           # Entry point
-```
-
-### Adding New Providers
-1. Create provider class in `src/providers/`
-2. Implement `ProviderInterface`
-3. Register in `src/providers/index.ts`
-4. Add environment variable support
-
-### Adding New Categories
-1. Add category definition in `src/config/configuration-manager.ts`
-2. Update pattern matching in `src/services/task-categorizer.ts`
-
-## Troubleshooting
+## 🔍 Troubleshooting
 
 ### Common Issues
 
-1. **No API keys configured**
-   - Check .env file exists and has valid API keys
-   - Verify at least one provider is available
+#### 1. "MCP server not found" or connection errors
 
-2. **TypeScript compilation errors**
-   - Use `./build.sh` which allows some errors for demo
-   - Or fix specific errors in the source files
+**Solution:**
+- Verify the path to `dist/index.js` is correct and absolute
+- Ensure the project was built successfully with `npm run build`
+- Check Claude Desktop logs for specific error messages
 
-3. **Cache issues**
-   - Clear cache using the `clear_cache` tool
-   - Check cache settings in environment variables
+#### 2. "API key invalid" errors
 
-4. **Model not available**
-   - Verify API key is valid
-   - Check provider health in stats
+**Solution:**
+- Verify your API keys are correct and active
+- Check that keys are properly set in the MCP configuration
+- Ensure you have sufficient credits/quota for your chosen providers
 
-### Logs
-The server provides detailed logging at different levels:
-- ERROR: Critical errors
-- WARN: Warning conditions  
-- INFO: General information
-- DEBUG: Detailed debugging
+#### 3. Web search not working
 
-Set `LOG_LEVEL=debug` for verbose output.
+**Solution:**
+- Verify `BRAVE_API_KEY` is set correctly
+- Check Brave Search API dashboard for usage limits
+- Ensure your API key has the necessary permissions
 
-## Performance Targets
+#### 4. Slow performance
 
-- **98% cost reduction** through smart routing and caching
-- **4% performance improvement** through prompt enhancement
-- **Sub-second response times** for cached requests
-- **90%+ cache hit rate** for repeated patterns
+**Common causes and solutions:**
+- **Content scraping timeout**: Normal for 30-60 seconds on first run
+- **Rate limiting**: Server automatically handles this with retries
+- **Large content**: Content is automatically truncated for efficiency
 
-## Support
+### Debug Mode
 
-For issues and questions:
-1. Check the logs for error details
-2. Verify your configuration
-3. Test with simple prompts first
-4. Review the MCP tool documentation 
+Enable detailed logging to diagnose issues:
+
+```json
+{
+  "env": {
+    "LOG_LEVEL": "debug",
+    "NODE_ENV": "development"
+  }
+}
+```
+
+## 📊 Performance Optimization
+
+### Expected Performance
+
+Typical performance metrics:
+- **Search Phase**: 2-5 seconds for query generation and web search
+- **Content Scraping**: 20-60 seconds for 2-3 URLs
+- **Enhancement**: 1-3 seconds for prompt enhancement
+- **Total**: 30-70 seconds end-to-end
+
+### Optimization Tips
+
+1. **Use caching**: The server automatically caches results for identical prompts
+2. **Limit search scope**: Use specific enhancement levels to control processing time
+3. **Monitor usage**: Check API usage to avoid rate limits
+
+## 🔒 Security Best Practices
+
+### API Key Security
+
+- **Never commit API keys** to version control
+- **Use environment variables** for all sensitive configuration
+- **Rotate keys regularly** according to provider recommendations
+- **Monitor usage** for unexpected spikes that might indicate compromise
+
+### Network Security
+
+- All API communications use HTTPS
+- No user data is stored persistently
+- All web scraping respects robots.txt and rate limits
+
+## 🔄 Updates and Maintenance
+
+### Keeping Updated
+
+```bash
+# Pull latest changes
+git pull origin main
+
+# Update dependencies
+npm update
+
+# Rebuild
+npm run build
+
+# Restart Claude Desktop to reload
+```
+
+### Monitoring
+
+The server provides built-in monitoring through the `get_stats` tool:
+
+```json
+{
+  "tool": "get_stats",
+  "options": { "detailed": true }
+}
+```
+
+This returns:
+- API usage statistics
+- Performance metrics
+- Cache hit rates
+- Error rates
+
+## 🆘 Getting Help
+
+### Support Channels
+
+1. **GitHub Issues**: Report bugs and request features
+2. **Discussions**: Community support and questions
+3. **Documentation**: Check README.md for detailed API documentation
+
+### Providing Feedback
+
+When reporting issues, please include:
+- Your operating system and Node.js version
+- Complete error messages and logs
+- Steps to reproduce the issue
+- Your configuration (without API keys)
+
+## 📈 Advanced Configuration
+
+### Custom Provider Settings
+
+You can add multiple providers and let the system choose the best one:
+
+```json
+{
+  "env": {
+    "GOOGLE_API_KEY": "key1",
+    "OPENAI_API_KEY": "key2",
+    "ANTHROPIC_API_KEY": "key3"
+  }
+}
+```
+
+The system will automatically:
+- Select the best model for each task
+- Handle rate limits and fallbacks
+- Optimize for cost and performance
+
+### Performance Tuning
+
+For high-volume usage:
+
+```bash
+# Increase Node.js memory limit
+NODE_OPTIONS="--max-old-space-size=4096"
+
+# Enable production optimizations
+NODE_ENV=production
+```
+
+This setup guide should get you up and running with the Prompt Enhancer MCP server. The system is designed to work out of the box with minimal configuration while providing advanced options for power users. 

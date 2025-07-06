@@ -1,22 +1,35 @@
-import { EnhancementResult, TaskCategory, ModelConfig, ProviderInterface } from '../types';
+import { ProviderInterface, TaskCategory, ModelConfig } from '../types';
 import { Logger } from '../utils/logger';
 
 export interface EnhancementOptions {
   max_iterations?: number;
   strategies?: string[];
   quality_threshold?: number;
-  cost_limit?: number | undefined;
+  cost_limit?: number;
+}
+
+export interface EnhancementResult {
+  original_prompt: string;
+  enhanced_prompt: string;
+  categories: TaskCategory[];
+  model_used: string;
+  provider_used: string;
+  iterations_performed: number;
+  total_cost: number;
+  applied_strategies: string[];
+  quality_score: number;
+  processing_time: number;
 }
 
 export class PromptEnhancer {
+  private provider: ProviderInterface;
+  private model: ModelConfig;
   private logger: Logger;
-  private enhancementProvider: ProviderInterface;
-  private enhancementModel: ModelConfig;
 
-  constructor(enhancementProvider: ProviderInterface, enhancementModel: ModelConfig) {
+  constructor(provider: ProviderInterface, model: ModelConfig) {
+    this.provider = provider;
+    this.model = model;
     this.logger = new Logger('PromptEnhancer');
-    this.enhancementProvider = enhancementProvider;
-    this.enhancementModel = enhancementModel;
   }
 
   public async enhancePrompt(
@@ -38,7 +51,6 @@ export class PromptEnhancer {
 
     const topCategory = categories[0];
     if (!topCategory) {
-      // If no category, return original prompt
       return this.createEnhancementResult(originalPrompt, originalPrompt, [], '', '', 0, 0, [], 0, Date.now() - startTime);
     }
 
@@ -46,133 +58,102 @@ export class PromptEnhancer {
       return this.createEnhancementResult(originalPrompt, originalPrompt, categories, '', '', 0, 0, [], 0, Date.now() - startTime);
     }
 
-    // Enhance the prompt iteratively
-    while (iterations < maxIterations) {
-      const strategy = strategies[iterations % strategies.length];
-      
-      if (!strategy) {
+    for (const strategy of strategies) {
+      if (iterations >= maxIterations) break;
+
+      const estimatedCost = this.estimateTokenCost(currentPrompt);
+      if (totalCost + estimatedCost > costLimit) {
+        this.logger.warn('Enhancement stopped: cost limit would be exceeded', {
+          currentCost: totalCost,
+          estimatedCost,
+          costLimit
+        });
         break;
       }
-      
-      // Check if making another LLM call would exceed cost limit
-      if (costLimit !== undefined && totalCost > 0) {
-        // Estimate cost for next call based on previous average
-        const avgCostPerCall = totalCost / appliedStrategies.length;
-        if (totalCost + avgCostPerCall > costLimit) {
-          this.logger.debug('Estimated cost would exceed limit, stopping enhancement', { 
-            totalCost, 
-            estimatedNextCost: avgCostPerCall,
-            costLimit 
-          });
-          break;
-        }
-      }
-      
+
       try {
-        const enhancementPrompt = this.createEnhancementPrompt(currentPrompt, topCategory, strategy);
+        const enhancementPrompt = this.createEnhancementPrompt(currentPrompt, strategy, topCategory);
         
-        // Log the request that will be sent to the model
-        this.logger.debug('Prompt enhancement LLM call', {
-          model: this.enhancementModel.name,
+        this.logger.debug('Enhancement request', {
           strategy,
-          prompt_preview: enhancementPrompt.substring(0, 300)
+          iteration: iterations + 1,
+          estimatedCost
         });
 
-        const response = await this.enhancementProvider.generate(enhancementPrompt, {
-          model: this.enhancementModel.name,
+        const response = await this.provider.generate(enhancementPrompt, {
+          model: this.model.name,
           max_tokens: 500,
           temperature: 0.3
         });
 
-        // Log the raw response snippet
-        this.logger.debug('Prompt enhancement LLM response', {
-          model: this.enhancementModel.name,
-          response_preview: response.content.substring(0, 300)
+        this.logger.debug('Enhancement response received', {
+          strategy,
+          responseLength: response.content.length,
+          cost: response.cost || 0
         });
 
-        totalCost += response.cost;
-        
         const enhancedPrompt = this.extractEnhancedPrompt(response.content);
-        
-        // Check if cost limit would be exceeded by continuing
-        if (costLimit !== undefined && totalCost >= costLimit) {
-          this.logger.debug('Cost limit reached, stopping enhancement', { 
-            totalCost, 
-            costLimit 
+        const cost = response.cost || estimatedCost;
+        totalCost += cost;
+
+        if (totalCost > costLimit) {
+          this.logger.warn('Cost limit exceeded, stopping enhancement', {
+            totalCost,
+            costLimit,
+            strategy
           });
-          // Apply this enhancement but don't continue
-          currentPrompt = enhancedPrompt;
-          appliedStrategies.push(strategy);
-          qualityScore = 0.5;
           break;
         }
-        
-        // --- BYPASSING FOR TEST ---
-        // The improvement score logic is too simplistic and is incorrectly
-        // rejecting valid enhancements. We will accept the enhancement regardless.
-        currentPrompt = enhancedPrompt;
-        appliedStrategies.push(strategy);
-        qualityScore = 0.5; // Set a mock quality score
-        // --- END BYPASS ---
-        
-        /*
-        // Check if enhancement is worthwhile
-        const improvementScore = this.calculateImprovementScore(currentPrompt, enhancedPrompt, topCategory);
-        
-        if (improvementScore > 0.1) { // Minimum improvement threshold
+
+        const improvementScore = this.calculateImprovementScore(currentPrompt, enhancedPrompt);
+
+        qualityScore = 0.5;
+
+        if (improvementScore > 0.1) {
           currentPrompt = enhancedPrompt;
           appliedStrategies.push(strategy);
-          qualityScore = improvementScore;
-          
-          this.logger.debug('Prompt enhanced', {
-            iteration: iterations + 1,
+          iterations++;
+
+          this.logger.info('Enhancement applied', {
             strategy,
-            improvement_score: improvementScore,
-            cost: response.cost
+            iteration: iterations,
+            improvementScore: improvementScore.toFixed(3),
+            cost: cost.toFixed(6),
+            totalCost: totalCost.toFixed(6)
           });
         } else {
-          this.logger.debug('Enhancement rejected due to low improvement', {
-            iteration: iterations + 1,
+          this.logger.debug('Enhancement rejected: insufficient improvement', {
             strategy,
-            improvement_score: improvementScore
+            improvementScore: improvementScore.toFixed(3)
           });
         }
-        */
 
-        // Check if we've reached quality threshold
         if (qualityScore >= qualityThreshold) {
+          this.logger.info('Quality threshold reached, stopping enhancement', {
+            qualityScore: qualityScore.toFixed(3),
+            threshold: qualityThreshold
+          });
           break;
         }
 
-        iterations++;
       } catch (error) {
-        this.logger.error('Enhancement iteration failed', { 
-          error: error as Error, 
-          iteration: iterations + 1,
-          strategy 
+        this.logger.error('Enhancement strategy failed', {
+          strategy,
+          error: error instanceof Error ? error.message : 'Unknown error'
         });
-        break;
+        continue;
       }
     }
 
-    const processingTime = Math.max(1, Date.now() - startTime); // Ensure processing time is at least 1ms
-    
-    // Handle token estimation with error fallback
-    let estimatedTokens = 0;
-    try {
-      estimatedTokens = this.enhancementProvider.estimateTokens(currentPrompt);
-    } catch (error) {
-      this.logger.warn('Token estimation failed, using fallback', { error: error as Error });
-      estimatedTokens = Math.max(1, Math.ceil(currentPrompt.length / 4)); // Fallback estimation
-    }
+    const processingTime = Math.max(1, Date.now() - startTime);
 
     return this.createEnhancementResult(
       originalPrompt,
       currentPrompt,
       categories,
-      this.enhancementModel.name,
-      this.enhancementModel.provider,
-      estimatedTokens,
+      this.model.name,
+      this.provider.name,
+      iterations,
       totalCost,
       appliedStrategies,
       qualityScore,
@@ -180,78 +161,57 @@ export class PromptEnhancer {
     );
   }
 
-  private createEnhancementPrompt(prompt: string, category: TaskCategory, strategy: string): string {
-    const basePrompt = `You are an expert prompt engineer. Your task is to enhance the following prompt using the "${strategy}" strategy for a ${category.name} task.
+  private createEnhancementPrompt(prompt: string, strategy: string, category: TaskCategory): string {
+    const strategyInstructions = {
+      clarity: 'Make the prompt clearer and more specific. Remove ambiguity and add precise requirements.',
+      specificity: 'Add specific details, constraints, and expected output format. Include relevant context.',
+      context_enrichment: 'Enhance with domain-specific context, examples, and best practices for better results.',
+      structure: 'Improve the structure and organization of the prompt for better comprehension.',
+      completeness: 'Ensure all necessary information is included and nothing important is missing.'
+    };
+
+    const instruction = strategyInstructions[strategy as keyof typeof strategyInstructions] || 
+                      'Improve the prompt for better clarity and effectiveness.';
+
+    return `You are an expert prompt engineer. Your task is to enhance the following prompt using the "${strategy}" strategy for a ${category.name} task.
 
 Original prompt: "${prompt}"
 
-Task category: ${category.name}
-System context: ${category.system_prompt.substring(0, 200)}...
+Enhancement strategy: ${instruction}
 
-Enhancement strategy: ${strategy}
+System context: ${category.system_prompt}
 
-${this.getStrategyInstructions(strategy)}
-
-Please provide ONLY the enhanced prompt without any explanations or additional text. The enhanced prompt should be clear, specific, and optimized for the task category.
-
-Enhanced prompt:`;
-
-    return basePrompt;
-  }
-
-  private getStrategyInstructions(strategy: string): string {
-    switch (strategy) {
-      case 'clarity':
-        return `Focus on making the prompt clearer and more understandable. Remove ambiguity, simplify complex language, and ensure the request is crystal clear.`;
-      
-      case 'specificity':
-        return `Make the prompt more specific and detailed. Add context, specify desired format, include examples if helpful, and eliminate vague terms.`;
-      
-      case 'context_enrichment':
-        return `Add relevant context and background information. Include constraints, requirements, and any domain-specific details that would help produce better results.`;
-      
-      case 'structure':
-        return `Improve the structure and organization of the prompt. Use clear sections, bullet points, or numbered lists where appropriate.`;
-      
-      case 'examples':
-        return `Add relevant examples or templates to guide the response. Include input-output examples or similar scenarios.`;
-      
-      case 'constraints':
-        return `Add helpful constraints and requirements. Specify length, format, tone, style, or other parameters that would improve the output.`;
-      
-      default:
-        return `Improve the prompt to make it more effective for the given task category.`;
-    }
+Return ONLY the enhanced prompt without any explanations, prefixes, or additional text. The enhanced prompt should be clear, actionable, and optimized for the specified task category.`;
   }
 
   private extractEnhancedPrompt(response: string): string {
-    // Clean up the response to extract just the enhanced prompt
-    let enhanced = response.trim();
-    
-    // Remove common prefixes
-    const prefixes = [
-      'Enhanced prompt:',
-      'Here is the enhanced prompt:',
-      'Enhanced version:',
-      'Improved prompt:',
-      'Here\'s the enhanced prompt:',
-      'The enhanced prompt is:',
-      'Enhanced:'
-    ];
-    
-    for (const prefix of prefixes) {
-      if (enhanced.toLowerCase().startsWith(prefix.toLowerCase())) {
-        enhanced = enhanced.substring(prefix.length).trim();
-        break;
+    let cleaned = response.trim();
+
+    cleaned = cleaned.replace(/^(enhanced prompt:?\s*|improved prompt:?\s*|here's the enhanced prompt:?\s*)/i, '');
+
+    const lines = cleaned.split('\n').filter(line => line.trim());
+    if (lines.length > 0) {
+      let result = lines.join(' ').trim();
+      
+      if (result.startsWith('"') && result.endsWith('"')) {
+        result = result.slice(1, -1);
       }
+      
+      return result;
     }
 
-    // Remove quotes if the entire response is quoted
-    if (enhanced.startsWith('"') && enhanced.endsWith('"')) {
-      enhanced = enhanced.slice(1, -1);
-    }
+    return cleaned;
+  }
 
-    return enhanced;
+  private calculateImprovementScore(original: string, enhanced: string): number {
+    if (enhanced.length <= original.length * 0.9) return 0;
+    
+    const lengthImprovement = Math.min(0.3, (enhanced.length - original.length) / original.length);
+    const structureImprovement = enhanced.includes('Requirements:') || enhanced.includes('Context:') ? 0.2 : 0;
+    const specificityImprovement = (enhanced.match(/\b(specific|exactly|must|should|will)\b/gi) || []).length > 
+                                   (original.match(/\b(specific|exactly|must|should|will)\b/gi) || []).length ? 0.1 : 0;
+    
+    return lengthImprovement + structureImprovement + specificityImprovement;
   }
 
   private createEnhancementResult(
@@ -259,77 +219,48 @@ Enhanced prompt:`;
     enhancedPrompt: string,
     categories: TaskCategory[],
     modelUsed: string,
-    provider: string,
-    estimatedTokens: number,
+    providerUsed: string,
+    iterations: number,
     totalCost: number,
     appliedStrategies: string[],
     qualityScore: number,
     processingTime: number
   ): EnhancementResult {
+    if (!enhancedPrompt || enhancedPrompt.trim() === '') {
+      return {
+        original_prompt: originalPrompt,
+        enhanced_prompt: originalPrompt,
+        categories,
+        model_used: modelUsed,
+        provider_used: providerUsed,
+        iterations_performed: iterations,
+        total_cost: totalCost,
+        applied_strategies: appliedStrategies,
+        quality_score: qualityScore,
+        processing_time: processingTime
+      };
+    }
+
     return {
       original_prompt: originalPrompt,
       enhanced_prompt: enhancedPrompt,
       categories,
       model_used: modelUsed,
-      provider,
-      estimated_tokens: estimatedTokens,
-      estimated_cost: totalCost,
-      enhancement_strategies: appliedStrategies,
+      provider_used: providerUsed,
+      iterations_performed: iterations,
+      total_cost: totalCost,
+      applied_strategies: appliedStrategies,
       quality_score: qualityScore,
       processing_time: processingTime
     };
   }
 
-  public async batchEnhancePrompts(
-    prompts: string[],
-    categories: TaskCategory[][],
-    options: EnhancementOptions = {}
-  ): Promise<EnhancementResult[]> {
-    const results: EnhancementResult[] = [];
-    
-    for (let i = 0; i < prompts.length; i++) {
-      try {
-        const prompt = prompts[i];
-        const category = categories[i] || [];
-        if (prompt) {
-          const result = await this.enhancePrompt(prompt, category, options);
-          results.push(result);
-        }
-      } catch (error) {
-        this.logger.error('Batch enhancement failed for prompt', { 
-          index: i, 
-          error: error as Error 
-        });
-        // Add a failed result
-        const prompt = prompts[i];
-        results.push(this.createEnhancementResult(
-          prompt || '',
-          prompt || '', // No enhancement
-          categories[i] || [],
-          this.enhancementModel.name,
-          this.enhancementModel.provider,
-          0,
-          0,
-          [],
-          0,
-          0
-        ));
-      }
-    }
-
-    return results;
+  private estimateTokenCost(prompt: string): number {
+    const estimatedTokens = this.estimateTokens(prompt);
+    return estimatedTokens * (this.model.cost_per_token || 0.000001);
   }
 
-  public getAvailableStrategies(): string[] {
-    return ['clarity', 'specificity', 'context_enrichment', 'structure', 'examples', 'constraints'];
-  }
-
-  public updateEnhancementModel(provider: ProviderInterface, model: ModelConfig): void {
-    this.enhancementProvider = provider;
-    this.enhancementModel = model;
-    this.logger.info('Enhancement model updated', { 
-      provider: provider.name, 
-      model: model.name 
-    });
+  private estimateTokens(text: string): number {
+    return Math.max(1, Math.ceil(text.length / 4));
   }
 } 
